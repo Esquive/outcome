@@ -16,6 +16,6 @@ class Node[T](var children: mutable.LinkedHashMap[T,Edge[T]] = mutable.LinkedHas
 }
 
 class ActiveNode[T](var activeNode: Node[T]){
-  var activeEdge : Edge[T] = null
+  var activeEdge : Option[T] = None
   var activeLength : Int = 0
 }
