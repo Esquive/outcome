@@ -52,14 +52,12 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
         if (this.activeNode.activeLength == 0) {
 
           //TODO: Handle the currentSymbol.symbol situation
-          //Check if the edge exists
-
-          //TODO: Change the signature of this method: We must handle the endsymbol situation
+          //Check if the edge exists (Note: Here an edge with the EndSymbol is supposed to be created.
+          //Although it is not done. The root EndSymbol is implicit. Therefore a map with the longest suffix is kept for a sequence.
           val edge = this.activeNode.activeNode.children.getOrElse(currentSymbol.symbol, null)
           if (edge == null) {
 
-            //If it is not existing we create it. And we add it to the currentEdges
-            //TODO: Change the signature of this method: We must handle the endsymbol situation
+            //If it is not existing we create it. And we add it to the currentEdges (See Note in previous comment.
             this.activeNode.activeNode.children.put(currentSymbol.symbol, {
               val edge = new Edge[T](ListBuffer(currentSymbol.symbol))
               edge.parent = this.activeNode.activeNode
