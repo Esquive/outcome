@@ -5,7 +5,6 @@ package one.niu.outcome.gst
   */
 trait GeneralSuffixTreeInterface[T] {
 
-
   def insert(word : scala.collection.mutable.Iterable[T])
 
 }
