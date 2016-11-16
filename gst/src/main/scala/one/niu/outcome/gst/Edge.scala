@@ -6,15 +6,14 @@ import scala.collection.mutable.ListBuffer
 /**
   * Created by ericfalk on 31/10/2016.
   */
-class Edge[T](private var label : mutable.Iterable[T]) {
-
+class Edge[T](private var label : mutable.Buffer[T] = ListBuffer.empty[T] ) {
 
   //TODO: Define a default leaf node type?
   var parent : Node[T] = null
   var child : Node[T] = null
 
   var suffixCount = {label.size}
-  var endSymbols = mutable.LinkedHashSet.empty[EndSymbol]
+  private var endSymbols = mutable.LinkedHashSet.empty[EndSymbol]
 
   def append(symbol: Symbol[T]): Unit = {
 
@@ -37,6 +36,7 @@ class Edge[T](private var label : mutable.Iterable[T]) {
     }
   }
 
+  //TODO: Remove the casting to listbuffers.
   def getSymbol(index: Int): Symbol[T] ={
     return new Symbol[T](label.asInstanceOf[ListBuffer[T]](index))
   }
@@ -49,6 +49,22 @@ class Edge[T](private var label : mutable.Iterable[T]) {
       } else {
         label.asInstanceOf[ListBuffer[T]](index) == symbol.symbol
       }
+    }
+  }
+
+  def containsEndSymbol(symbol: Symbol[T]) : Boolean = {
+    return endSymbols.contains(symbol.asInstanceOf[EndSymbol])
+  }
+
+  def sliceEdge(index: Int, offset: Int) : Edge[T] = {
+    return {
+      val result = new Edge[T](label.slice(index, offset))
+      result.endSymbols = endSymbols
+      endSymbols = mutable.LinkedHashSet.empty[EndSymbol]
+      //Set the label of the this edge.
+      label = label.slice(0, index)
+      suffixCount = label.size
+      result
     }
   }
 

@@ -23,15 +23,13 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
 
   override def insert(word: mutable.Iterable[T]): Unit = {
 
-    //TODO: Implement a generic symbol foreah logic, so the user specifies the logic on how to iterate over the suffixes.
+    //TODO: Implement a generic symbol foreach logic, so the user specifies the logic on how to iterate over the suffixes.
     this.currentWord.appendAll(word)
     for (i <- 0 until word.size) {
       updateGst(new Symbol[T](currentWord(i)))
     }
-
     ///Insert the endSymbol for the String
     updateGst(new EndSymbol(UUID.randomUUID().toString).asInstanceOf[Symbol[T]])
-
     //Reset the parameters for the next word to insert in the tree
     reset()
 
@@ -51,88 +49,82 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
 
         if (this.activeNode.activeLength == 0) {
 
-          //TODO: Handle the currentSymbol.symbol situation
-          //Check if the edge exists (Note: Here an edge with the EndSymbol is supposed to be created.
-          //Although it is not done. The root EndSymbol is implicit. Therefore a map with the longest suffix is kept for a sequence.
-          val edge = this.activeNode.activeNode.children.getOrElse(currentSymbol.symbol, null)
-          if (edge == null) {
-
-            //If it is not existing we create it. And we add it to the currentEdges (See Note in previous comment.
-            this.activeNode.activeNode.children.put(currentSymbol.symbol, {
-              val edge = new Edge[T](ListBuffer(currentSymbol.symbol))
-              edge.parent = this.activeNode.activeNode
-              this.currentEdges.append(edge)
-              edge
-            })
-
-            this.remainingSuffixCount -= 1
-
-            //Exit the loop
-            break
-
-          } else {
-
-            this.activeNode.activeEdge = edge
-            this.activeNode.activeLength += 1
-            break
-
-          }
+          this.activeNode.activeEdge = this.getActiveEdgeOrCreate(currentSymbol)
+          break
 
         } else {
 
           val edge = this.activeNode.activeEdge
 
-          if (edge.suffixCount <= this.activeNode.activeLength) {
+          if (edge.suffixCount > 0 && edge.suffixCount <= this.activeNode.activeLength) {
+
             if (edge.child != null) {
               this.activeNode.activeNode = edge.child
               this.activeNode.activeLength = 0
+              this.activeNode.activeEdge = this.getActiveEdgeOrCreate(currentSymbol)
               break
             } else {
+//              //It is an EndSymbol Edge move along the suffix link
+//              this.activeNode.activeNode = this.activeNode.activeNode.suffixLink
+//              this.activeNode.activeEdge = this.getActiveEdgeOrCreate(currentSymbol)
               throw new IllegalStateException()
             }
-          }
 
-          if (edge.equalSymbolAt(currentSymbol,this.activeNode.activeLength)) {
-            this.activeNode.activeLength += 1
-            break()
           } else {
-            val node = this.splitEdge(edge, currentSymbol)
-            this.handleSuffixLink(node)
+
+            if (edge.equalSymbolAt(currentSymbol, this.activeNode.activeLength)) {
+              this.activeNode.activeLength += 1
+              break
+            } else {
+              val node = this.splitEdge(edge, currentSymbol)
+              this.handleSuffixLink(node)
+            }
+
           }
 
         } //End If activeLength
-      } //End While
-    } //End Breakable
 
+      } //End While
+
+    } //End Breakable
 
   }
 
+  /**
+    *
+    * @param edge
+    * @param currentSymbol
+    * @return
+    */
   private def splitEdge(edge: Edge[T], currentSymbol: Symbol[T]): Node[T] = {
 
     //TODO: Handle the currentSymbol.symbol situtation
     //Split/Create the new edges
-    val edge1 = new Edge[T](edge.getLabel().slice(this.activeNode.activeLength, edge.getLabel().size))
-    val edge2 = new Edge[T](ListBuffer[T](currentSymbol.symbol))
-    edge1.parent = this.activeNode.activeNode
-    edge2.parent = this.activeNode.activeNode
+    val edge1 = edge.sliceEdge(this.activeNode.activeLength, edge.suffixCount)
+
+    //TODO: Change the code for the endsymbol handling
+    val edge2 = currentSymbol match {
+      case s: EndSymbol => {
+        val edge = new Edge[T]; edge.append(currentSymbol); edge
+      }
+      case _ => new Edge[T](ListBuffer[T](currentSymbol.symbol))
+    }
+    //    edge1.parent = this.activeNode.activeNode
+    //    edge2.parent = this.activeNode.activeNode
 
     //Create an internal Node
-    edge.child = new Node[T](mutable.LinkedHashMap[T, Edge[T]](edge1.getLabel()(0) -> edge1, edge2.getLabel()(0) -> edge2))
+    //TODO: Change the code to handle EndSymbols: I need to purge/ move the endSymbols when splitting
+    edge.child = new Node[T]()
+    edge.child.addChild(edge1)
+    edge.child.addChild(edge2)
     edge.child.suffixLink = root
-
 
     //Add the split edges to the current edge update and remove the initital one
     this.currentEdges.remove(this.currentEdges.indexOf(edge))
 
     //TODO: See if the code works if I have the edge label update before.
-    edge.setLabel(edge.getLabel().slice(0, this.activeNode.activeLength))
-    edge.child.parentSuffixCount = {
-      if(edge.parent != root) {
-        edge.suffixCount + edge.parent.parentSuffixCount
-      } else {
-        edge.suffixCount
-      }
-    }
+    //edge.setLabel(edge.getLabel().slice(0, this.activeNode.activeLength))
+    edge.child.parentSuffixCount = edge.suffixCount + edge.parent.parentSuffixCount
 
     this.currentEdges.append(edge1)
     this.currentEdges.append(edge2)
@@ -142,12 +134,18 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
       this.activeNode.activeEdge = this.activeNode.activeNode.getNextEdge(this.activeNode.activeEdge)
     } else {
       this.activeNode.activeNode = activeNode.activeNode.suffixLink
+      this.activeNode.activeEdge = this.getActiveEdgeOrCreate(currentSymbol)
+      //TODO: Get the next active edge
     }
 
     this.remainingSuffixCount -= 1
     edge.child
   }
 
+  /**
+    *
+    * @param node
+    */
   private def handleSuffixLink(node: Node[T]): Unit = {
     if (lastCreatedNode == null) {
       this.lastCreatedNode = node
@@ -157,6 +155,42 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     }
   }
 
+
+  /**
+    * The active node is querid for the edge for a given symbol. If the edge does not exist it is created.
+    * @param currentSymbol
+    * @return
+    */
+  private def getActiveEdgeOrCreate(currentSymbol: Symbol[T]): Edge[T] = {
+
+    val edge = this.activeNode.activeNode.getChild(currentSymbol)
+    if (edge == null) {
+
+      //If it is not existing we create it. And we add it to the currentEdges.
+      (this.activeNode.activeNode, currentSymbol) match {
+        case (n, s) if (n == this.root && s.isInstanceOf[EndSymbol]) => {
+          //Do nothing:  The endSymbol is explicit for every Suffix inserted in the tree.
+          this.remainingSuffixCount -= 1
+        }
+        case _ => {
+          val newEdge = this.activeNode.activeNode.addChild(currentSymbol)
+          currentEdges.append(newEdge)
+          this.remainingSuffixCount -= 1
+          return newEdge
+        }
+      }
+    } else {
+      this.activeNode.activeEdge = edge
+      this.activeNode.activeLength += 1
+      return edge
+    }
+    return edge
+  }
+
+
+  /***
+    * Reset the variables used to insert an element in the suffix tree.
+    */
   private def reset(): Unit = {
     this.activeNode.activeNode = this.root
     this.remainingSuffixCount = 0
