@@ -21,11 +21,13 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
   //TODO: Use a better structure for currentEdges
   protected val currentEdges: mutable.Buffer[Edge[T]] = ListBuffer.empty[Edge[T]]
 
+
   override def insert(word: mutable.Iterable[T]): Unit = {
 
     //TODO: Implement a generic symbol foreach logic, so the user specifies the logic on how to iterate over the suffixes.
     this.currentWord.appendAll(word)
     for (i <- 0 until word.size) {
+      this.resetSuffixLink()
       updateGst(new Symbol[T](currentWord(i)))
     }
     ///Insert the endSymbol for the String
@@ -35,6 +37,10 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
 
   }
 
+  /**
+    *
+    * @param currentSymbol
+    */
   protected def updateGst(currentSymbol: Symbol[T]): Unit = {
 
     //We have one suffix to add
@@ -48,10 +54,8 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
       while (this.remainingSuffixCount > 0) {
 
         if (this.activeNode.activeLength == 0) {
-
           this.activeNode.activeEdge = this.getActiveEdgeOrCreate(currentSymbol)
           break
-
         } else {
 
           val edge = this.activeNode.activeEdge
@@ -83,9 +87,7 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
           }
 
         } //End If activeLength
-
       } //End While
-
     } //End Breakable
 
   }
@@ -96,7 +98,7 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     * @param currentSymbol
     * @return
     */
-  private def splitEdge(edge: Edge[T], currentSymbol: Symbol[T]): Node[T] = {
+  protected def splitEdge(edge: Edge[T], currentSymbol: Symbol[T]): Node[T] = {
 
     //TODO: Handle the currentSymbol.symbol situtation
     //Split/Create the new edges
@@ -134,8 +136,11 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
       this.activeNode.activeEdge = this.activeNode.activeNode.getNextEdge(this.activeNode.activeEdge)
     } else {
       this.activeNode.activeNode = activeNode.activeNode.suffixLink
-      this.activeNode.activeEdge = this.getActiveEdgeOrCreate(currentSymbol)
-      //TODO: Get the next active edge
+      //Here we get the active edge with the symbol of the last active edge.
+      //We will not update the Active Symbol
+      this.activeNode.activeEdge = this.getActiveEdgeOrCreate(edge.getSymbol(0))
+      //TODO: Decrement the activelength by one. A better solution had to be found.
+      this.activeNode.activeLength -= 1
     }
 
     this.remainingSuffixCount -= 1
@@ -146,7 +151,7 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     *
     * @param node
     */
-  private def handleSuffixLink(node: Node[T]): Unit = {
+  protected def handleSuffixLink(node: Node[T]): Unit = {
     if (lastCreatedNode == null) {
       this.lastCreatedNode = node
     } else {
@@ -155,14 +160,20 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     }
   }
 
+  /***
+    *
+    */
+  protected def resetSuffixLink(): Unit = {
+    this.lastCreatedNode = null
+  }
 
   /**
-    * The active node is querid for the edge for a given symbol. If the edge does not exist it is created.
+    * The active node is querid for the edge for a given symbol.
+    * If the edge does not exist it is created.
     * @param currentSymbol
     * @return
     */
-  private def getActiveEdgeOrCreate(currentSymbol: Symbol[T]): Edge[T] = {
-
+  protected def getActiveEdgeOrCreate(currentSymbol: Symbol[T]): Edge[T] = {
     val edge = this.activeNode.activeNode.getChild(currentSymbol)
     if (edge == null) {
 
@@ -187,11 +198,10 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     return edge
   }
 
-
   /***
     * Reset the variables used to insert an element in the suffix tree.
     */
-  private def reset(): Unit = {
+  protected def reset(): Unit = {
     this.activeNode.activeNode = this.root
     this.remainingSuffixCount = 0
     this.lastCreatedNode = null
