@@ -12,11 +12,11 @@ allprojects {
 
     dependencies {
         testCompile group: 'junit', name: 'junit', version: '4.11'
-        testCompile 'org.scala-lang:scala-library:2.11.7'
-        testCompile group: 'org.scalatest', name: 'scalatest_2.11', version: '2.2.2'
+        testCompile 'org.scala-lang:scala-library:2.12.1'
+        testCompile group: 'org.scalatest', name: 'scalatest_2.12', version:'3.0.1'
 
 //    SCALA
-        compile 'org.scala-lang:scala-library:2.11.7'
+        compile 'org.scala-lang:scala-library:2.12.1'
     }
 }
 

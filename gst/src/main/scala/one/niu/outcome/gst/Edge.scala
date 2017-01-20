@@ -8,18 +8,20 @@ import scala.collection.mutable.ListBuffer
   */
 class Edge[T](private var label : mutable.Buffer[T] = ListBuffer.empty[T] ) {
 
-  //TODO: Define a default leaf node type?
   var parent : Node[T] = null
   var child : Node[T] = null
-
   var suffixCount = {label.size}
   private var endSymbols = mutable.LinkedHashSet.empty[EndSymbol]
 
+  /**
+    *
+    * @param symbol
+    */
   def append(symbol: Symbol[T]): Unit = {
 
     if(symbol.isInstanceOf[EndSymbol]){
 
-      val newSymbol = new EndSymbol(symbol.asInstanceOf[EndSymbol].symbol)
+      val newSymbol = new EndSymbol(symbol.asInstanceOf[EndSymbol].content)
       newSymbol.index = {
         if(parent != null) {
           parent.parentSuffixCount + suffixCount
@@ -30,32 +32,52 @@ class Edge[T](private var label : mutable.Buffer[T] = ListBuffer.empty[T] ) {
       endSymbols.add(newSymbol)
     } else {
       //Append a symbol to the label
-      label.asInstanceOf[ListBuffer[T]] += symbol.symbol
+      label.asInstanceOf[ListBuffer[T]] += symbol.content
       //Update the suffix count
       this.suffixCount = this.label.size
     }
   }
 
-  //TODO: Remove the casting to listbuffers.
+  /**
+    *
+    * @param index
+    * @return
+    */
   def getSymbol(index: Int): Symbol[T] ={
-    return new Symbol[T](label.asInstanceOf[ListBuffer[T]](index))
+    return new Symbol[T](label(index))
   }
 
+  /**
+    *
+    * @param symbol
+    * @param index
+    * @return
+    */
   def equalSymbolAt(symbol: Symbol[T],index: Int): Boolean = {
-    //TODO: Handle the symbol.symbol situation
     return {
       if(symbol.isInstanceOf[EndSymbol]){
         endSymbols.contains(symbol.asInstanceOf[EndSymbol])
       } else {
-        label.asInstanceOf[ListBuffer[T]](index) == symbol.symbol
+        label(index) == symbol.content
       }
     }
   }
 
+  /**
+    *
+    * @param symbol
+    * @return
+    */
   def containsEndSymbol(symbol: Symbol[T]) : Boolean = {
     return endSymbols.contains(symbol.asInstanceOf[EndSymbol])
   }
 
+  /**
+    *
+    * @param index
+    * @param offset
+    * @return
+    */
   def sliceEdge(index: Int, offset: Int) : Edge[T] = {
     return {
       val result = new Edge[T](label.slice(index, offset))
@@ -67,6 +89,7 @@ class Edge[T](private var label : mutable.Buffer[T] = ListBuffer.empty[T] ) {
       result
     }
   }
+
 
   //TODO: create an update edge function to replace the two other functions
   def getLabel(): mutable.Buffer[T] = {

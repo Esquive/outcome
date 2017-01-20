@@ -2,6 +2,8 @@ package one.niu.outcome.gst
 
 import java.util.UUID
 
+import one.niu.outcome.gst.traits.{BaseGeneralSuffixTree, InsertableGeneralSuffixTree, SearchableGeneralSuffixTree}
+
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.util.control.Breaks._
@@ -9,21 +11,13 @@ import scala.util.control.Breaks._
 /**
   * Created by ericfalk on 31/10/2016.
   */
-class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
-
-  protected val root = new Node[T]
-  protected val activeNode = new ActiveNode[T](root)
-
-  protected var remainingSuffixCount = 0
-  protected var lastCreatedNode: Node[T] = null
-
-  protected val currentWord: mutable.Buffer[T] = ListBuffer.empty[T]
-  //TODO: Use a better structure for currentEdges
-  protected val currentEdges: mutable.Buffer[Edge[T]] = ListBuffer.empty[Edge[T]]
-
+class GeneralSuffixTree[T] extends BaseGeneralSuffixTree[T]
+                                   with InsertableGeneralSuffixTree[T]
+                                   with SearchableGeneralSuffixTree[T]{
 
   override def insert(word: mutable.Iterable[T]): Unit = {
 
+    //TODO: Implement a EndSymbol Logic so users can define an indetifier
     //TODO: Implement a generic symbol foreach logic, so the user specifies the logic on how to iterate over the suffixes.
     this.currentWord.appendAll(word)
     for (i <- 0 until word.size) {
@@ -33,9 +27,11 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     ///Insert the endSymbol for the String
     updateGst(new EndSymbol(UUID.randomUUID().toString).asInstanceOf[Symbol[T]])
     //Reset the parameters for the next word to insert in the tree
-    reset()
+    resetInsert()
 
   }
+
+  override def search(word: mutable.Iterable[T]): Unit = ???
 
   /**
     *
@@ -100,23 +96,20 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
     */
   protected def splitEdge(edge: Edge[T], currentSymbol: Symbol[T]): Node[T] = {
 
-    //TODO: Handle the currentSymbol.symbol situtation
     //Split/Create the new edges
     val edge1 = edge.sliceEdge(this.activeNode.activeLength, edge.suffixCount)
 
-    //TODO: Change the code for the endsymbol handling
     val edge2 = currentSymbol match {
       case s: EndSymbol => {
         val edge = new Edge[T]; edge.append(currentSymbol); edge
       }
-      case _ => new Edge[T](ListBuffer[T](currentSymbol.symbol))
+      case _ => new Edge[T](ListBuffer[T](currentSymbol.content))
     }
     //    edge1.parent = this.activeNode.activeNode
     //    edge2.parent = this.activeNode.activeNode
 
     //Create an internal Node
-    //TODO: Change the code to handle EndSymbols: I need to purge/ move the endSymbols when splitting
-    edge.child = new Node[T]()
+    edge.child = new Node[T](edge)
     edge.child.addChild(edge1)
     edge.child.addChild(edge2)
     edge.child.suffixLink = root
@@ -201,14 +194,14 @@ class GeneralSuffixTree[T] extends GeneralSuffixTreeInterface[T] {
   /***
     * Reset the variables used to insert an element in the suffix tree.
     */
-  protected def reset(): Unit = {
+  override protected def resetInsert(): Unit = {
     this.activeNode.activeNode = this.root
+    this.activeNode.activeLength = 0
     this.remainingSuffixCount = 0
     this.lastCreatedNode = null
     this.currentEdges.clear()
     this.currentWord.clear()
   }
-
 }
 
 

@@ -3,11 +3,11 @@ package one.niu.outcome.gst
 import scala.collection.mutable
 import scala.util.control.Breaks._
 
-//TODO: Add a parent edge pointer
 /**
   * Created by ericfalk on 31/10/2016.
   */
-class Node[T](private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.LinkedHashMap.empty[T, Edge[T]],
+class Node[T](val parent: Edge[T],
+              private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.LinkedHashMap.empty[T, Edge[T]],
               var parentSuffixCount: Int = 0) {
 
   //Set the parent of the edges
@@ -19,11 +19,15 @@ class Node[T](private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.
   var suffixLink: Node[T] = null
 
   //Constructor
-  def this(node: Node[T]) {
-    this(node.children)
-  }
+//  def this(node: Node[T]) {
+//    this(node.children)
+//  }
 
-
+  /**
+    *
+    * @param symbol
+    * @return
+    */
   def getChild(symbol: Symbol[T]): Edge[T] = {
     return {
       if (symbol.isInstanceOf[EndSymbol]) {
@@ -36,14 +40,19 @@ class Node[T](private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.
         } else if(result.size == 0) {
           null
         } else {
-          result.getOrElse(symbol.symbol, null)
+          result.getOrElse(symbol.content, null)
         }
       } else {
-        children.getOrElse(symbol.symbol, null)
+        children.getOrElse(symbol.content, null)
       }
     }
   }
 
+  /**
+    *
+    * @param symbol
+    * @return
+    */
   def addChild(symbol : Symbol[T]): Edge[T] = {
     val edge = new Edge[T]()
     symbol match {
@@ -56,12 +65,16 @@ class Node[T](private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.
       case _ => {
         edge.append(symbol)
         edge.parent = this
-        children.put(symbol.symbol,edge)
+        children.put(symbol.content,edge)
         edge
       }
     }
   }
 
+  /**
+    *
+    * @param edge
+    */
   def addChild(edge: Edge[T]): Unit = {
     edge.parent = this
     edge.getLabel().size match {
@@ -72,6 +85,11 @@ class Node[T](private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.
     }
   }
 
+  /**
+    *
+    * @param currentEdge
+    * @return
+    */
   def getNextEdge(currentEdge: Edge[T]): Edge[T] = {
 
     val it = children.iterator
@@ -99,6 +117,11 @@ class Node[T](private var children: mutable.LinkedHashMap[T, Edge[T]] = mutable.
 
 }
 
+/**
+  *
+  * @param activeNode
+  * @tparam T
+  */
 class ActiveNode[T](var activeNode: Node[T]) {
   var activeEdge: Edge[T] = null
   var activeLength: Int = 0
