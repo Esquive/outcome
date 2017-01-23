@@ -17,6 +17,7 @@ allprojects {
 
 //    SCALA
         compile 'org.scala-lang:scala-library:2.12.1'
+        compile group: 'commons-io', name: 'commons-io', version: '2.5'
     }
 }
 

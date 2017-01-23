@@ -9,102 +9,157 @@ import one.niu.outcome.dag.traits.{BaseNominalDAG, InsertableNominalDAG}
   */
 @SerialVersionUID(1234L)
 class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
-                                              with Serializable
-{
+                            with Serializable {
 
-  val levels = mutable.ListBuffer.empty[mutable.HashMap[ByteBuffer,Node]]
-  val leafs = mutable.HashMap.empty[ByteBuffer,Node]
+  val levels = mutable.ListBuffer.empty[mutable.HashMap[ByteBuffer, Node]]
+  val leafs = mutable.HashMap.empty[ByteBuffer, Node]
 
   //TODO: This will have to be thread safe
   override def insert(sequence: Sequence[T]): Array[Byte] = {
 
     //Init variables
     var currentNode = rootNode
-    var currentLevel = -1
-    var pathCreated = false
-    var usedPathNumber: ByteBuffer = null
-    val currentPathNumberWrapper = ByteBuffer.wrap(this.getBytesForCurrentPathNumber)
+
+    var createdPathNumber: ByteBuffer = null
+
+    var usedPathNumbers: mutable.Set[ByteBuffer] = mutable.Set.empty[ByteBuffer]
+    val newPathNumberWrapper = ByteBuffer.wrap(this.getBytesForCurrentPathNumber)
     val symbols = sequence.getSymbols().toIterator
 
-    while(symbols.hasNext){
+    //Backlog of traversed nodes
+    val nodeBacklog = mutable.Stack[Node]()
+
+
+    var counter = -1
+    while (symbols.hasNext) {
+
+      counter += 1
 
       //Get the next symbol
       val symbol = symbols.next()
-      currentLevel += 1
-
       val symbolWrapper = ByteBuffer.wrap(symbol)
 
-      //Check if the node has the correct children
-      if(currentNode.children.contains(symbolWrapper)){
+      val symbolString = new String(symbol)
 
-        //NO NEW PATH IS CREATED
-        currentNode = currentNode.children.getOrElse(symbolWrapper,null)
-//        usedPathNumber = currentNode.keyDictionary.getOrElse(symbolWrapper,null)
+      //Check if the current node has a corresponding children
+      if (currentNode.children.contains(symbolWrapper)) {
 
-      } else if(levels.size > currentLevel && levels(currentLevel + 1).contains(symbolWrapper)) {
-        //A NEW PATH IS CREATED
+        //Replace the current currentNode with the child already contained in the list
+        val node = currentNode.children.getOrElse(symbolWrapper, null)
+
+        //Get the used path information (only if it is less generic than the current)
+        if (node.level > 0) {
+          val temp = node.keyDictionary.getOrElse(currentNode.symbol, null)
+          if (usedPathNumbers.size == 0) {
+            usedPathNumbers = temp
+          }
+          else {
+            //TODO: Check the case of empty intersection
+            usedPathNumbers = temp.intersect(usedPathNumbers)
+          }
+        } else {
+          if(this.levels.size == 1){
+            //This case should be avoided since this means only one feature is used. And the childrens are unique
+            usedPathNumbers = mutable.Set(node.children.toList(0)._2.symbol)
+          }
+        }
+
+        currentNode = node
+        //Add the traversed node to the backlog
+        nodeBacklog.push(currentNode)
+      }
+
+      //If the node has no corresponding child we check if the structure of the lower level has the node.
+      else if (levels.size > currentNode.level + 1 && levels(currentNode.level + 1).contains(symbolWrapper)) {
 
         //Get the node from the next level store and update the relationships
-        val node = levels(currentLevel + 1).getOrElse(symbolWrapper,null)
-        node.parents.put(currentPathNumberWrapper, currentNode)
-        //Update the path information
-        node.keyDictionary.put(symbolWrapper,currentPathNumberWrapper)
-        usedPathNumber = currentPathNumberWrapper
+        val node = levels(currentNode.level + 1).getOrElse(symbolWrapper, null)
+
+        //Now we have to create a new path
+        node.parents.put(newPathNumberWrapper, currentNode)
+        currentNode.children.put(symbolWrapper, node)
+        createdPathNumber = newPathNumberWrapper
+
         currentNode = node
+        nodeBacklog.push(currentNode)
 
-        pathCreated = true
-
-      } else {
-        //A NEW PATH IS CREATED
+      }
+      //Otherwise the node does not exist
+      else {
 
         //Check if the current level exists
-        if(levels.size <= currentLevel) {
-          levels  += mutable.HashMap.empty[ByteBuffer,Node]
+        if (levels.size <= currentNode.level + 1) {
+          levels += mutable.HashMap.empty[ByteBuffer, Node]
         }
 
         //Create the node and update the relationships
-        val node = this.createInternalNode(symbol,currentLevel)
-        levels(currentLevel).put(symbolWrapper,node)
-        if(currentNode != this.rootNode) {
-          node.parents.put(currentPathNumberWrapper, currentNode)
-          node.keyDictionary.put(symbolWrapper,currentPathNumberWrapper)
-          usedPathNumber = currentPathNumberWrapper
+        val node = this.createInternalNode(symbolWrapper, currentNode.level + 1)
+        levels(currentNode.level + 1).put(symbolWrapper, node)
+
+        if (currentNode != this.rootNode) {
+          node.parents.put(newPathNumberWrapper, currentNode)
         }
-        currentNode.children.put(symbolWrapper,node)
+        createdPathNumber = newPathNumberWrapper
+        currentNode.children.put(symbolWrapper, node)
         currentNode = node
 
-        pathCreated = true
+        //Push the current Node to the backlog
+        nodeBacklog.push(currentNode)
+
+      }
+    }
+
+
+    //If a path was created all the traversed nodes are updated
+    if (createdPathNumber != null) {
+      val iterator = nodeBacklog.iterator
+      var child: Node = null
+      if (iterator.hasNext) {
+        child = iterator.next()
+      }
+      while (iterator.hasNext) {
+        val parent = iterator.next()
+        child.keyDictionary.addBinding(parent.symbol, createdPathNumber)
+
+        child = parent
+      }
+
+      //Crete the leaf node
+      val leafNode = this.createLeafNode(createdPathNumber)
+      leafNode.parents.put(newPathNumberWrapper, currentNode)
+      currentNode.children.put(newPathNumberWrapper, leafNode)
+      leafs.put(newPathNumberWrapper, leafNode)
+
+      //TODO: Carry over the number of bytes to the leaf.
+      this.updateCurrentPathNumber;
+      newPathNumberWrapper.rewind().array()
+      newPathNumberWrapper.array()
+
+
+    } else {
+
+      //After traversing the graph the usedPath Set should contain only a single element
+      if (usedPathNumbers.size == 1) {
+        val elem = usedPathNumbers.toList(0)
+        elem.rewind()
+        elem.array()
+      } else {
+        throw new IllegalStateException("After traversing the graph the usedPathNumbers should be unique")
       }
 
     }
 
-
-    if(pathCreated) {
-      val leafNode = this.createLeafNode()
-      leafNode.parents.put(currentPathNumberWrapper, currentNode)
-      currentNode.children.put(currentPathNumberWrapper, leafNode)
-      leafs.put(currentPathNumberWrapper, leafNode)
-
-      this.updateCurrentPathNumber;
-      currentPathNumberWrapper.rewind().array()
-      currentPathNumberWrapper.array()
-    } else {
-      //TODO: get the leaf node witht eh correct path number.
-      usedPathNumber.rewind()
-      usedPathNumber.array()
-    }
-
   }
 
-  private def createInternalNode(symbol: Array[Byte], level: Int): Node ={
+  private def createInternalNode(symbol: ByteBuffer, level: Int): Node = {
     //TODO: Use the same bytebuffer as for the Key to save memory
-    new Node(false,false,level,symbol)
+    new Node(false, false, level, symbol)
   }
 
-  private def createLeafNode(): Node = {
+  private def createLeafNode(pathNumber: ByteBuffer): Node = {
     ///TODO: Use the same bytebuffer as for the Key to save memory
-    new Node(false,true,-1,
-      this.getBytesForCurrentPathNumber)
+    new Node(false, true, -1,
+      pathNumber)
   }
 
 
