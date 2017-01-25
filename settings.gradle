@@ -1,4 +1,6 @@
 rootProject.name = 'outcome'
 include 'gst'
 include 'nominal-dag'
+include 'core'
+findProject(':core')?.name = 'outcome'
 

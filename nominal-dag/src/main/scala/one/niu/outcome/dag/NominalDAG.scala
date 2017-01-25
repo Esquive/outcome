@@ -1,14 +1,18 @@
 package one.niu.outcome.dag
 
 import java.nio.ByteBuffer
+
 import scala.collection.mutable
-import one.niu.outcome.dag.traits.{BaseNominalDAG, InsertableNominalDAG}
+import one.niu.outcome.dag.traits.{BaseNominalDAG, InsertableNominalDAG, ReadableNominalDAG}
+
+import scala.collection.mutable.ListBuffer
 
 /**
   * Created by ericfalk on 16/01/2017.
   */
 @SerialVersionUID(1234L)
 class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
+                            with ReadableNominalDAG[T]
                             with Serializable {
 
   val levels = mutable.ListBuffer.empty[mutable.HashMap[ByteBuffer, Node]]
@@ -22,18 +26,14 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
 
     var createdPathNumber: ByteBuffer = null
 
-    var usedPathNumbers: mutable.Set[ByteBuffer] = mutable.Set.empty[ByteBuffer]
+    var usedPathNumbers: mutable.Set[ByteBuffer] = null
     val newPathNumberWrapper = ByteBuffer.wrap(this.getBytesForCurrentPathNumber)
     val symbols = sequence.getSymbols().toIterator
 
     //Backlog of traversed nodes
     val nodeBacklog = mutable.Stack[Node]()
 
-
-    var counter = -1
     while (symbols.hasNext) {
-
-      counter += 1
 
       //Get the next symbol
       val symbol = symbols.next()
@@ -48,17 +48,16 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
         val node = currentNode.children.getOrElse(symbolWrapper, null)
 
         //Get the used path information (only if it is less generic than the current)
-        if (node.level > 0) {
+        if (createdPathNumber == null && node.level > 0) {
           val temp = node.keyDictionary.getOrElse(currentNode.symbol, null)
-          if (usedPathNumbers.size == 0) {
+          if (usedPathNumbers == null) {
             usedPathNumbers = temp
           }
           else {
-            //TODO: Check the case of empty intersection
-            usedPathNumbers = temp.intersect(usedPathNumbers)
+            usedPathNumbers = temp.intersect(usedPathNumbers);
           }
         } else {
-          if(this.levels.size == 1){
+          if (this.levels.size == 1) {
             //This case should be avoided since this means only one feature is used. And the childrens are unique
             usedPathNumbers = mutable.Set(node.children.toList(0)._2.symbol)
           }
@@ -76,7 +75,6 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
         val node = levels(currentNode.level + 1).getOrElse(symbolWrapper, null)
 
         //Now we have to create a new path
-        node.parents.put(newPathNumberWrapper, currentNode)
         currentNode.children.put(symbolWrapper, node)
         createdPathNumber = newPathNumberWrapper
 
@@ -96,9 +94,6 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
         val node = this.createInternalNode(symbolWrapper, currentNode.level + 1)
         levels(currentNode.level + 1).put(symbolWrapper, node)
 
-        if (currentNode != this.rootNode) {
-          node.parents.put(newPathNumberWrapper, currentNode)
-        }
         createdPathNumber = newPathNumberWrapper
         currentNode.children.put(symbolWrapper, node)
         currentNode = node
@@ -112,29 +107,8 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
 
     //If a path was created all the traversed nodes are updated
     if (createdPathNumber != null) {
-      val iterator = nodeBacklog.iterator
-      var child: Node = null
-      if (iterator.hasNext) {
-        child = iterator.next()
-      }
-      while (iterator.hasNext) {
-        val parent = iterator.next()
-        child.keyDictionary.addBinding(parent.symbol, createdPathNumber)
 
-        child = parent
-      }
-
-      //Crete the leaf node
-      val leafNode = this.createLeafNode(createdPathNumber)
-      leafNode.parents.put(newPathNumberWrapper, currentNode)
-      currentNode.children.put(newPathNumberWrapper, leafNode)
-      leafs.put(newPathNumberWrapper, leafNode)
-
-      //TODO: Carry over the number of bytes to the leaf.
-      this.updateCurrentPathNumber;
-      newPathNumberWrapper.rewind().array()
-      newPathNumberWrapper.array()
-
+      this.updateNodeBacklog(nodeBacklog, createdPathNumber, currentNode)
 
     } else {
 
@@ -143,11 +117,38 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
         val elem = usedPathNumbers.toList(0)
         elem.rewind()
         elem.array()
-      } else {
+      } else if (usedPathNumbers.size == 0) {
+        //if this case occurs it was possible to walk down the graph but the intersection was empty hence the unique path does not exist and must be created.
+        this.updateNodeBacklog(nodeBacklog, newPathNumberWrapper, currentNode)
+      }
+      else {
         throw new IllegalStateException("After traversing the graph the usedPathNumbers should be unique")
       }
 
     }
+
+  }
+
+  override def read(buffer: ByteBuffer) : (mutable.Buffer[ByteBuffer], Int) = {
+
+    //get the leafNode
+    var node = leafs.getOrElse(buffer,null)
+    var size = 0
+    if(node != null){
+
+      val results = ListBuffer.empty[ByteBuffer]
+      do{
+        node = this.getParent(node,buffer)
+        results.+=:(node.symbol)
+        size += node.symbol.capacity()
+      } while (node.level > 0)
+
+      return (results,size)
+
+    } else {
+      throw new NoSuchElementException("The element was not found in the encoding topology")
+    }
+
 
   }
 
@@ -162,5 +163,42 @@ class NominalDAG[T] extends BaseNominalDAG[T] with InsertableNominalDAG[T]
       pathNumber)
   }
 
+  //TODO: Change the Stack structure to List
+  private def updateNodeBacklog(nodeBacklog: mutable.Stack[Node], createdPathNumber: ByteBuffer, currentNode: Node): Array[Byte] = {
+    val iterator = nodeBacklog.iterator
+    var child: Node = null
+    if (iterator.hasNext) {
+      child = iterator.next()
+    }
+    while (iterator.hasNext) {
+      val parent = iterator.next()
+      child.parents.put(createdPathNumber, parent)
+      child.keyDictionary.addBinding(parent.symbol, createdPathNumber)
+
+      child = parent
+    }
+
+    //Crete the leaf node
+    val leafNode = this.createLeafNode(createdPathNumber)
+    leafNode.parents.put(createdPathNumber, currentNode)
+    currentNode.children.put(createdPathNumber, leafNode)
+    leafs.put(createdPathNumber, leafNode)
+
+    //TODO: Carry over the number of bytes to the leaf.
+    this.updateCurrentPathNumber;
+    createdPathNumber.rewind()
+    createdPathNumber.array()
+  }
+
+  private def getParent(node: Node, byteBuffer: ByteBuffer): Node ={
+
+    val parent = node.parents.getOrElse(byteBuffer,null)
+    if(parent != null){
+      return parent
+    } else {
+      throw new NoSuchElementException("The parent could not be found")
+    }
+
+  }
 
 }
